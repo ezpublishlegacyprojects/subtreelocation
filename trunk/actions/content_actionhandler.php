@@ -1,6 +1,6 @@
 <?php 
 
-function subtreeLocation_ContentActionHandler( &$module, &$http, &$objectID )
+function subtreelocation_ContentActionHandler( &$module, &$http, &$objectID )
 {
     if ( $http->hasPostVariable( 'AddSubtreeAssignmentButton' ) )
     {
@@ -116,13 +116,15 @@ function subtreeLocation_ContentActionHandler( &$module, &$http, &$objectID )
                                                     'from_page' => "/content/action" ),
                                             $module );
 
-                    return;
+                    return true;
                 }
             
                 return $module->handleError( eZError::KERNEL_ACCESS_DENIED, 'kernel' );
             }
         }
     }
+    
+    return true;
 }
 
 
