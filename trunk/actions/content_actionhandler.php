@@ -4,8 +4,8 @@ function subtreelocation_ContentActionHandler( &$module, &$http, &$objectID )
 {
     if ( $http->hasPostVariable( 'AddSubtreeAssignmentButton' ) )
     {
-        $viewMode = 'full';
-        $languageCode = false;
+        $viewMode        = 'full';
+        $languageCode    = false;
         
         if ($module->currentAction() != 'AddSubtreeAssignment') {
             $module->setCurrentAction('SelectSubtreeAssignmentLocation');
@@ -54,13 +54,41 @@ function subtreelocation_ContentActionHandler( &$module, &$http, &$objectID )
                 if ( !is_array( $selectedNodeIDArray ) )
                     $selectedNodeIDArray = array();
 
+                $canScheduleScript = false;
+                if ( in_array( 'ezscriptmonitor', eZExtension::activeExtensions() ) and class_exists( 'eZScheduledScript' ) )
+                {
+                    eZDebug::writeNotice( 'The scriptmonitor extension will be used if there are too many objects to add location.', 
+                                          'extension/subtreelocation/actions/content_actionhandler.php' );
+                    $canScheduleScript = true;
+                }
+
                 $selectedNodeIDArray = eZContentBrowse::result( 'AddSubtreeAssignment' );
                 if (count($selectedNodeIDArray))
                 {
-                    $operation = subtreeLocation::addAssignment( $nodeID, $objectID, $selectedNodeIDArray );
-                    if ( !$operation['status'] )
-                        return $module->handleError( eZError::KERNEL_NOT_AVAILABLE, 'kernel' );
+                    $subtreeLocatioINI = eZINI::instance('subtreelocation.ini');
+                    $maxSubtreeNodeCount = $subtreeLocatioINI->variable('ScriptMonitor', 'MaxSubtreeSize');
+                    if ( $canScheduleScript && count($existingNode::subTreeByNodeID(false, $nodeID)) > $maxSubtreeNodeCount )
+                    {
+                        $scritpMonitorINI = eZINI::instance('ezscriptmonitor.ini.append.php');
+                        $phpCliCommand = $scritpMonitorINI->variable('GeneralSettings', 'PhpCliCommand');
+                        $script = eZScheduledScript::create( 'subtreelocation.php',
+                                            $phpCliCommand . ' extension/subtreelocation/bin/php/' . eZScheduledScript::SCRIPT_NAME_STRING .
+                                            ' -s ' . eZScheduledScript::SITE_ACCESS_STRING .
+                                            ' --src-node-id=' . $nodeID .
+                                            ' --loc-node-id=' . implode( ',', array_unique( $selectedNodeIDArray ) ),
+                                            eZUser::currentUserID()
+                                  );
+                        $script->store();
+                        $scriptID = $script->attribute( 'id' );
+                    }
+                    else
+                    {
+                        $operation = subtreeLocation::addAssignment( $nodeID, $objectID, $selectedNodeIDArray );
+                        if ( !$operation['status'] )
+                            return $module->handleError( eZError::KERNEL_NOT_AVAILABLE, 'kernel' );
+                    }
                 }
+                
                 return $module->redirectToView( 'view', array( 'full', $nodeID ) );
             }
             elseif ( $module->isCurrentAction( 'SelectSubtreeAssignmentLocation' ) )
