@@ -1,0 +1,11 @@
+1. Extract the archive
+
+2. Copy the directory subtreelocation in your extension directory
+
+3. Edit the settings in settings/subtreelocation.ini.append.php
+
+4. If you are using ezscriptmonitor, verify the settings in ezscriptmonitor.ini.append.php
+
+5. Activate the extension
+
+6. Clear your cache
