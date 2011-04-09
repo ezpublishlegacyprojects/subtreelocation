@@ -48,12 +48,15 @@ function subtreelocation_ContentActionHandler( &$module, &$http, &$objectID )
             }
 
             $class = $object->contentClass();
+            
+            // Add location to subtree action
             if ( $module->isCurrentAction( 'AddSubtreeAssignment' ) )
             {
                 $selectedNodeIDArray = '';
                 if ( !is_array( $selectedNodeIDArray ) )
                     $selectedNodeIDArray = array();
 
+                // Test if ezscriptmonitor is activated
                 $canScheduleScript = false;
                 if ( in_array( 'ezscriptmonitor', eZExtension::activeExtensions() ) and class_exists( 'eZScheduledScript' ) )
                 {
@@ -62,15 +65,36 @@ function subtreelocation_ContentActionHandler( &$module, &$http, &$objectID )
                     $canScheduleScript = true;
                 }
 
+                // Process result from browser page
                 $selectedNodeIDArray = eZContentBrowse::result( 'AddSubtreeAssignment' );
                 if (count($selectedNodeIDArray))
                 {
                     $subtreeLocatioINI = eZINI::instance('subtreelocation.ini');
-                    $maxSubtreeNodeCount = $subtreeLocatioINI->variable('ScriptMonitor', 'MaxSubtreeSize');
-                    if ( $canScheduleScript && count($existingNode::subTreeByNodeID(false, $nodeID)) > $maxSubtreeNodeCount )
+                    // if ezscriptmonitor activated and if subtree has too many children
+                    if ( $canScheduleScript && 
+                         $subtreeLocatioINI->hasVariable('ScriptMonitor', 'MaxSubtreeSize') && 
+                         count($existingNode::subTreeByNodeID(false, $nodeID)) > $subtreeLocatioINI->variable('ScriptMonitor', 'MaxSubtreeSize') )
                     {
                         $scritpMonitorINI = eZINI::instance('ezscriptmonitor.ini.append.php');
                         $phpCliCommand = $scritpMonitorINI->variable('GeneralSettings', 'PhpCliCommand');
+                        $notStartedScripts = array_merge( eZScheduledScript::fetchNotStartedScripts(), eZScheduledScript::fetchCurrentScripts());
+                        // Verify if there is not a scheduled action for the same nodes
+                        foreach ($notStartedScripts as $notStartedScript)
+                        {
+                            if ($notStartedScript->Name == 'subtreelocation.php' && 
+                                preg_match("/^.*--src-node-id=(.*) --loc-node-id=(.*)$/", $notStartedScript->Command, $matches))
+                            {
+                                if ($matches[1] == $nodeID && 
+                                    count(array_intersect(array_unique( $selectedNodeIDArray ), explode(',', $matches[2]))) &&
+                                    $notStartedScript->statusText() != eZScheduledScript::STATUS_DEAD && 
+                                    $notStartedScript->statusText() != eZScheduledScript::STATUS_COMPLETE)
+                                {
+                                    return $module->redirectToView( 'view', array( 'full', $nodeID ) );
+                                }
+                            }
+                        }
+                        
+                        // Schedule action
                         $script = eZScheduledScript::create( 'subtreelocation.php',
                                             $phpCliCommand . ' extension/subtreelocation/bin/php/' . eZScheduledScript::SCRIPT_NAME_STRING .
                                             ' -s ' . eZScheduledScript::SITE_ACCESS_STRING .
@@ -83,6 +107,7 @@ function subtreelocation_ContentActionHandler( &$module, &$http, &$objectID )
                     }
                     else
                     {
+                        // Add location to subtree action
                         $operation = subtreeLocation::addAssignment( $nodeID, $objectID, $selectedNodeIDArray );
                         if ( !$operation['status'] )
                             return $module->handleError( eZError::KERNEL_NOT_AVAILABLE, 'kernel' );
@@ -93,6 +118,7 @@ function subtreelocation_ContentActionHandler( &$module, &$http, &$objectID )
             }
             elseif ( $module->isCurrentAction( 'SelectSubtreeAssignmentLocation' ) )
             {
+                // Display brwoser page
                 $ignoreNodesSelect = array();
                 $ignoreNodesClick  = array();
                 
